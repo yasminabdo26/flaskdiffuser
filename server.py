@@ -1,37 +1,31 @@
-from flask import Flask, request
-import socket
-import datetime
-from diffusers import DiffusionPipeline
-# from diffusers import StableDiffusionPipeline
-# import torch
+from flask import Flask, request, jsonify
+import torch
+from diffusers import StableDiffusionPipeline
+import base64
+import io
+from PIL import Image
 
 app = Flask(__name__)
 
-@app.route("/generate", methods=['POST'])
-def generate():
+# تحميل النموذج
+model_id = "CompVis/stable-diffusion-v1-4"
+pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+pipe.to("cuda")  # إذا كنت تستخدم GPU على Railway
+
+@app.route('/generate', methods=['POST'])
+def generate_image():
     data = request.get_json()
-    prompt = data["prompt"]
-    
-    # Local Only + CPU
-    device = 'cpu'    
-    model_id = r"C:\Users\1047281\AppData\Local\Diffusion\app\anything"
-    pipe = DiffusionPipeline.from_pretrained(model_id, local_files_only=True)
+    prompt = data.get("prompt", "")
 
-    # Interenet + GPU
-    # device = 'cuda'
-    # model_id = "windwhinny/chilloutmix"
-    # pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+    # توليد الصورة بناءً على الوصف
+    image = pipe(prompt).images[0]
 
-    host = socket.gethostname()
-    ip = socket.gethostbyname(host)
-    dt_now = datetime.datetime.now()
-    timestamp = str(dt_now.strftime("%Y_%m_%d_%H_%M_%S"))
+    # تحويل الصورة إلى base64
+    img_byte_arr = io.BytesIO()
+    image.save(img_byte_arr, format="PNG")
+    img_base64 = base64.b64encode(img_byte_arr.getvalue()).decode("utf-8")
 
-    pipe = pipe.to(device)
-    image = pipe(prompt).images[0]    
-    image.save("./img/" + timestamp + ".png")
-    
-    
-    return ip + "/img/" + timestamp + ".png"
+    return jsonify({"image": img_base64})
 
-app.run(host="0.0.0.0", port=8000)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
